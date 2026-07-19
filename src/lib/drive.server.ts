@@ -145,7 +145,7 @@ async function getAccessToken(): Promise<string> {
     }),
   });
   if (!res.ok) {
-    const body = await res.text();
+    const body = (await res.text()).replace(/\s+/g, " ");
     throw new Error(`Google token refresh failed [${res.status}]: ${body}`);
   }
   const data = (await res.json()) as { access_token: string; expires_in: number };
