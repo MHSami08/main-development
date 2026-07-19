@@ -8,9 +8,11 @@ import {
   Scripts,
 } from "@tanstack/react-router";
 import { useEffect, type ReactNode } from "react";
+import { ClerkProvider, SignedIn, SignedOut, SignInButton, UserButton } from "@clerk/clerk-react";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
+import { getClerkPublishableKey } from "../lib/get-clerk-key";
 
 function NotFoundComponent() {
   return (
@@ -77,14 +79,17 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Lovable App" },
-      { name: "description", content: "Lovable Generated Project" },
-      { name: "author", content: "Lovable" },
-      { property: "og:title", content: "Lovable App" },
-      { property: "og:description", content: "Lovable Generated Project" },
+      { title: "Page Renamer Pro — Batch rename notebook photos" },
+      { name: "description", content: "Upload notebook page images, rename them in order with a base name and page numbers, and download as a ZIP. Runs entirely in your browser." },
+      { name: "theme-color", content: "#0d111c" },
+      { property: "og:title", content: "Page Renamer Pro — Batch rename notebook photos" },
+      { property: "og:description", content: "Upload notebook page images, rename them in order with a base name and page numbers, and download as a ZIP. Runs entirely in your browser." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
-      { name: "twitter:site", content: "@Lovable" },
+      { name: "twitter:title", content: "Page Renamer Pro — Batch rename notebook photos" },
+      { name: "twitter:description", content: "Upload notebook page images, rename them in order with a base name and page numbers, and download as a ZIP. Runs entirely in your browser." },
+      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/2b38188c-7c73-4023-acd5-6f8ef6f71389/id-preview-cf5a8c18--db125590-5333-43f1-bc2d-3e9b30746f97.lovable.app-1784441059111.png" },
+      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/2b38188c-7c73-4023-acd5-6f8ef6f71389/id-preview-cf5a8c18--db125590-5333-43f1-bc2d-3e9b30746f97.lovable.app-1784441059111.png" },
     ],
     links: [
       {
@@ -92,8 +97,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         href: appCss,
       },
       { rel: "icon", href: "/favicon.ico", type: "image/x-icon" },
+      { rel: "manifest", href: "/manifest.webmanifest" },
     ],
   }),
+  loader: () => getClerkPublishableKey(),
   shellComponent: RootShell,
   component: RootComponent,
   notFoundComponent: NotFoundComponent,
@@ -116,11 +123,26 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+  const { publishableKey } = Route.useLoaderData();
 
   return (
-    <QueryClientProvider client={queryClient}>
-      {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
-      <Outlet />
-    </QueryClientProvider>
+    <ClerkProvider publishableKey={publishableKey} afterSignOutUrl="/">
+      <QueryClientProvider client={queryClient}>
+        <div className="fixed right-3 top-3 z-50 flex items-center gap-2">
+          <SignedOut>
+            <SignInButton mode="modal">
+              <button className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground shadow hover:brightness-110">
+                Sign in
+              </button>
+            </SignInButton>
+          </SignedOut>
+          <SignedIn>
+            <UserButton afterSignOutUrl="/" />
+          </SignedIn>
+        </div>
+        {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
+        <Outlet />
+      </QueryClientProvider>
+    </ClerkProvider>
   );
 }
