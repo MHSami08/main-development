@@ -12,8 +12,6 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiDriveFoldersRouteImport } from './routes/api/drive/folders'
 import { Route as ApiDriveUploadRouteImport } from './routes/api/drive/upload'
-import { Route as ApiDriveOauthCallbackRouteImport } from './routes/api/drive/oauth/callback'
-import { Route as ApiDriveOauthStartRouteImport } from './routes/api/drive/oauth/start'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -30,69 +28,35 @@ const ApiDriveUploadRoute = ApiDriveUploadRouteImport.update({
   path: '/api/drive/upload',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiDriveOauthCallbackRoute = ApiDriveOauthCallbackRouteImport.update({
-  id: '/api/drive/oauth/callback',
-  path: '/api/drive/oauth/callback',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiDriveOauthStartRoute = ApiDriveOauthStartRouteImport.update({
-  id: '/api/drive/oauth/start',
-  path: '/api/drive/oauth/start',
-  getParentRoute: () => rootRouteImport,
-} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/api/drive/folders': typeof ApiDriveFoldersRoute
   '/api/drive/upload': typeof ApiDriveUploadRoute
-  '/api/drive/oauth/callback': typeof ApiDriveOauthCallbackRoute
-  '/api/drive/oauth/start': typeof ApiDriveOauthStartRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/api/drive/folders': typeof ApiDriveFoldersRoute
   '/api/drive/upload': typeof ApiDriveUploadRoute
-  '/api/drive/oauth/callback': typeof ApiDriveOauthCallbackRoute
-  '/api/drive/oauth/start': typeof ApiDriveOauthStartRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/api/drive/folders': typeof ApiDriveFoldersRoute
   '/api/drive/upload': typeof ApiDriveUploadRoute
-  '/api/drive/oauth/callback': typeof ApiDriveOauthCallbackRoute
-  '/api/drive/oauth/start': typeof ApiDriveOauthStartRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths:
-    | '/'
-    | '/api/drive/folders'
-    | '/api/drive/upload'
-    | '/api/drive/oauth/callback'
-    | '/api/drive/oauth/start'
+  fullPaths: '/' | '/api/drive/folders' | '/api/drive/upload'
   fileRoutesByTo: FileRoutesByTo
-  to:
-    | '/'
-    | '/api/drive/folders'
-    | '/api/drive/upload'
-    | '/api/drive/oauth/callback'
-    | '/api/drive/oauth/start'
-  id:
-    | '__root__'
-    | '/'
-    | '/api/drive/folders'
-    | '/api/drive/upload'
-    | '/api/drive/oauth/callback'
-    | '/api/drive/oauth/start'
+  to: '/' | '/api/drive/folders' | '/api/drive/upload'
+  id: '__root__' | '/' | '/api/drive/folders' | '/api/drive/upload'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ApiDriveFoldersRoute: typeof ApiDriveFoldersRoute
   ApiDriveUploadRoute: typeof ApiDriveUploadRoute
-  ApiDriveOauthCallbackRoute: typeof ApiDriveOauthCallbackRoute
-  ApiDriveOauthStartRoute: typeof ApiDriveOauthStartRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -118,20 +82,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiDriveUploadRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/drive/oauth/callback': {
-      id: '/api/drive/oauth/callback'
-      path: '/api/drive/oauth/callback'
-      fullPath: '/api/drive/oauth/callback'
-      preLoaderRoute: typeof ApiDriveOauthCallbackRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/drive/oauth/start': {
-      id: '/api/drive/oauth/start'
-      path: '/api/drive/oauth/start'
-      fullPath: '/api/drive/oauth/start'
-      preLoaderRoute: typeof ApiDriveOauthStartRouteImport
-      parentRoute: typeof rootRouteImport
-    }
   }
 }
 
@@ -139,8 +89,6 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ApiDriveFoldersRoute: ApiDriveFoldersRoute,
   ApiDriveUploadRoute: ApiDriveUploadRoute,
-  ApiDriveOauthCallbackRoute: ApiDriveOauthCallbackRoute,
-  ApiDriveOauthStartRoute: ApiDriveOauthStartRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
