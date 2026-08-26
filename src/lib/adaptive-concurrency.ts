@@ -64,8 +64,9 @@ export class AdaptiveConcurrencyController {
 
   constructor(opts: AdaptiveOptions = {}) {
     this.min = opts.min ?? 2;
-    this.max = opts.max ?? 20;
+    this.max = opts.max ?? 40;
     this._concurrency = Math.min(this.max, Math.max(this.min, opts.start ?? 8));
+
     this.successesToRamp = opts.successesToRamp ?? 6;
     this.stableWindowMs = opts.stableWindowMs ?? 2500;
     this.rampStep = opts.rampStep ?? 2;
