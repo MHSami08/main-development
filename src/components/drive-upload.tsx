@@ -238,7 +238,7 @@ export function DriveUpload({ files }: Props) {
     pausedRef.current = false;
     setPaused(false);
 
-    const ctrl = new AdaptiveConcurrencyController({ start: 8, max: 40, min: 2 });
+    const ctrl = new AdaptiveConcurrencyController({ start: 8, max: 60, min: 2 });
     setStats(ctrl.stats());
 
     const done = { count: initialCompleted.size };
