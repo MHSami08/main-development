@@ -385,25 +385,64 @@ export function NoteRenamer() {
     }
     const existingSigs = new Set(baseItems.map((i) => i.sig));
     const seenInBatch = new Set<string>();
-    const mapped: ImgItem[] = [];
     const skipped: string[] = [];
     const failed: string[] = [];
 
-    // Hash files in parallel (a small pool) instead of one-by-one —
-    // with large batches this cuts the "Adding images…" phase from
-    // O(n) sequential reads to ~8 concurrent ones.
+    // Streaming worker pool: each file is hashed and added to the list as soon
+    // as it is ready (in original order), so nothing waits for a global step.
     type Result =
       | { kind: "ok"; index: number; sig: string }
       | { kind: "skipped"; name: string }
       | { kind: "failed"; name: string };
-    const results: Result[] = new Array(incoming.length);
+    const results: (Result | undefined)[] = new Array(incoming.length);
     let done = 0;
     let cursor = 0;
-    const CONCURRENCY = 8;
+    let active = 0;
+    let flushIdx = 0;
+    let added = 0;
+    let current = baseItems;
+    const idBase = Date.now();
+
+    function flush() {
+      const batch: ImgItem[] = [];
+      while (flushIdx < incoming.length && results[flushIdx]) {
+        const r = results[flushIdx]!;
+        const f = incoming[flushIdx];
+        if (r.kind === "ok") {
+          const url = URL.createObjectURL(f);
+          batch.push({
+            id: `${idBase}-${flushIdx}-${f.name}`,
+            file: f,
+            url,
+            originalFile: f,
+            originalUrl: url,
+            originalName: f.name,
+            ext: getExt(f.name),
+            sig: r.sig,
+            uploadOrder: baseItems.length + added + 1,
+          });
+          added++;
+        } else if (r.kind === "skipped") {
+          skipped.push(r.name);
+        } else {
+          failed.push(r.name);
+        }
+        flushIdx++;
+      }
+      if (batch.length > 0) {
+        current = [...current, ...batch];
+        orderCounterRef.current = current.length;
+        setItems(current);
+      }
+    }
+
+    const CONCURRENCY = 15;
     async function worker() {
       while (cursor < incoming.length) {
         const i = cursor++;
         const f = incoming[i];
+        active++;
+        onProgress?.(done, incoming.length, active);
         try {
           const sig = await fileSignature(f);
           if (existingSigs.has(sig) || seenInBatch.has(sig)) {
@@ -417,44 +456,17 @@ export function NoteRenamer() {
           results[i] = { kind: "failed", name: f.name };
         }
         done++;
-        onProgress?.(done, incoming.length);
+        active--;
+        flush();
+        onProgress?.(done, incoming.length, active);
       }
     }
     await Promise.all(
       Array.from({ length: Math.min(CONCURRENCY, incoming.length) }, () => worker()),
     );
+    flush();
 
-    // Build items in original order so uploadOrder matches the drop order.
-    for (let i = 0; i < incoming.length; i++) {
-      const r = results[i];
-      if (!r || r.kind === "skipped") {
-        if (r) skipped.push(r.name);
-        continue;
-      }
-      if (r.kind === "failed") {
-        failed.push(r.name);
-        continue;
-      }
-      const f = incoming[i];
-      const url = URL.createObjectURL(f);
-      mapped.push({
-        id: `${Date.now()}-${i}-${f.name}`,
-        file: f,
-        url,
-        originalFile: f,
-        originalUrl: url,
-        originalName: f.name,
-        ext: getExt(f.name),
-        sig: r.sig,
-        uploadOrder: baseItems.length + mapped.length + 1,
-      });
-    }
-
-    if (mapped.length > 0) {
-      const next = [...baseItems, ...mapped];
-      orderCounterRef.current = next.length;
-      setItems(next);
-    } else if (pending) {
+    if (added === 0 && pending) {
       orderCounterRef.current = baseItems.length;
       setItems(baseItems);
     }
