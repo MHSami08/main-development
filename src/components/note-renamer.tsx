@@ -357,7 +357,7 @@ export function NoteRenamer() {
   }, [items.length, baseName, validStart]);
 
   const [dragOver, setDragOver] = useState(false);
-  const [importing, setImporting] = useState<{ phase: "scan" | "add"; done: number; total: number } | null>(null);
+  const [importing, setImporting] = useState<{ phase: "scan" | "add"; done: number; total: number; active?: number } | null>(null);
 
 
   const previews = useMemo(() => {
@@ -365,7 +365,7 @@ export function NoteRenamer() {
     return items.map((it, i) => buildFileName(baseName, startNum + i, it.ext, lang));
   }, [items, baseName, validStart, startNum, lang]);
 
-  async function addFiles(fileList: FileList | File[], onProgress?: (done: number, total: number) => void) {
+  async function addFiles(fileList: FileList | File[], onProgress?: (done: number, total: number, active: number) => void) {
     const incoming = Array.from(fileList).filter(
       (f) => ACCEPTED.includes(f.type) || ACCEPTED_EXT.test(f.name),
     );
@@ -738,8 +738,8 @@ export function NoteRenamer() {
                     return;
                   }
                   setImporting({ phase: "add", done: 0, total: files.length });
-                  await addFiles(files, (done, total) =>
-                    setImporting({ phase: "add", done, total }),
+                  await addFiles(files, (done, total, active) =>
+                    setImporting({ phase: "add", done, total, active }),
                   );
                   setImporting(null);
                 })
@@ -764,7 +764,11 @@ export function NoteRenamer() {
                 <div className="text-sm font-medium">
                   {importing.phase === "scan"
                     ? "Scanning dropped items…"
-                    : `Adding images… ${importing.done}/${importing.total}`}
+                    : importing.done === 0
+                      ? importing.active && importing.active > 0
+                        ? `Processing ${importing.active} image${importing.active === 1 ? "" : "s"}…`
+                        : "Preparing images…"
+                      : `Importing ${importing.done} / ${importing.total}`}
                 </div>
                 <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
                   <div
@@ -774,7 +778,7 @@ export function NoteRenamer() {
                       width:
                         importing.phase === "scan" || importing.total === 0
                           ? "100%"
-                          : `${Math.round((importing.done / importing.total) * 100)}%`,
+                          : `${Math.max(6, Math.round((importing.done / importing.total) * 100))}%`,
                       ...(importing.phase === "scan" ? { animation: "pulse 1s ease-in-out infinite" } : {}),
                     }}
                   />
@@ -805,8 +809,8 @@ export function NoteRenamer() {
               const files = e.target.files;
               if (files && files.length > 0) {
                 setImporting({ phase: "add", done: 0, total: files.length });
-                await addFiles(files, (done, total) =>
-                  setImporting({ phase: "add", done, total }),
+                await addFiles(files, (done, total, active) =>
+                  setImporting({ phase: "add", done, total, active }),
                 );
                 setImporting(null);
               }
