@@ -24,6 +24,17 @@ export const Route = createFileRoute("/api/drive/folders")({
         } catch (e) {
           const msg = e instanceof Error ? e.message : String(e);
           console.error("drive/folders error:", msg);
+          // With the drive.file scope, a folder the app was never granted looks
+          // like it doesn't exist. Surface that as a distinct, actionable state.
+          if (msg.includes("[404]") || msg.includes("[403]") || msg.includes("File not found")) {
+            return Response.json(
+              {
+                error: "Drive folder access has not been granted to this app yet.",
+                code: "drive_not_granted",
+              },
+              { status: 409 },
+            );
+          }
           return Response.json({ error: msg }, { status: 500 });
         }
       },

@@ -30,32 +30,44 @@ let cached: { token: string; expiresAt: number } | null = null;
 
 async function refreshAccessToken(): Promise<string> {
   const { clientId, clientSecret, refreshToken } = getCreds();
-  const res = await fetch(TOKEN_URL, {
-    method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      client_id: clientId,
-      client_secret: clientSecret,
-      refresh_token: refreshToken,
-      grant_type: "refresh_token",
-    }),
-  });
-  if (!res.ok) {
-    // Log status + provider error code only. Never log credentials.
+  const maxAttempts = 5;
+  let lastErr = "";
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const res = await fetch(TOKEN_URL, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        client_id: clientId,
+        client_secret: clientSecret,
+        refresh_token: refreshToken,
+        grant_type: "refresh_token",
+      }),
+    });
+    if (res.ok) {
+      const data = (await res.json()) as { access_token: string; expires_in: number };
+      const now = Math.floor(Date.now() / 1000);
+      cached = { token: data.access_token, expiresAt: now + data.expires_in };
+      return data.access_token;
+    }
     let code = "";
     try {
-      const body = (await res.json()) as { error?: string; error_description?: string };
+      const body = (await res.json()) as { error?: string };
       code = body.error ?? "";
     } catch {
       /* ignore */
     }
-    console.error(`[drive] token refresh failed status=${res.status} error=${code || "unknown"}`);
-    throw new Error(`Google token refresh failed (${res.status}${code ? ": " + code : ""})`);
+    lastErr = `${res.status}${code ? ": " + code : ""}`;
+    // Retry on rate limit / transient server errors. invalid_grant is fatal.
+    const retriable =
+      res.status === 429 || res.status >= 500 || code === "rate_limit_exceeded" || code === "slow_down";
+    if (!retriable || attempt === maxAttempts - 1) {
+      console.error(`[drive] token refresh failed ${lastErr}`);
+      throw new Error(`Google token refresh failed (${lastErr})`);
+    }
+    const delay = 400 * Math.pow(2, attempt) + Math.random() * 300;
+    await new Promise((r) => setTimeout(r, delay));
   }
-  const data = (await res.json()) as { access_token: string; expires_in: number };
-  const now = Math.floor(Date.now() / 1000);
-  cached = { token: data.access_token, expiresAt: now + data.expires_in };
-  return data.access_token;
+  throw new Error(`Google token refresh failed (${lastErr})`);
 }
 
 async function getAccessToken(forceRefresh = false): Promise<string> {
@@ -192,4 +204,33 @@ export async function downloadFile(fileId: string): Promise<Response> {
   url.searchParams.set("alt", "media");
   url.searchParams.set("supportsAllDrives", "true");
   return driveFetch(url.toString());
+  }
+
+/**
+ * Short-lived Drive access token handed to the browser so that the image
+ * binary is uploaded directly from the browser to Google (never proxied
+ * through the serverless function, which has a small request body limit).
+ * Scope is drive.file, so the token can only touch files/folders this app
+ * created or was explicitly granted.
+ */
+export async function issueClientAccessToken(): Promise<{ accessToken: string; expiresAt: number }> {
+  const token = await getAccessToken();
+  return { accessToken: token, expiresAt: cached?.expiresAt ?? Math.floor(Date.now() / 1000) + 300 };
+}
+
+/** Verify folderId is the configured root or a descendant of it. */
+export async function assertFolderInRoot(folderId: string): Promise<void> {
+  const rootId = getRootFolderId();
+  if (folderId === rootId) return;
+  let current = folderId;
+  for (let depth = 0; depth < 12; depth++) {
+    const meta = await driveJson<{ parents?: string[] }>(
+      `${DRIVE_API}/files/${encodeURIComponent(current)}?fields=parents&supportsAllDrives=true`,
+    );
+    const parent = meta.parents?.[0];
+    if (!parent) break;
+    if (parent === rootId) return;
+    current = parent;
+  }
+  throw new Error("Folder is outside the allowed root folder");
 }

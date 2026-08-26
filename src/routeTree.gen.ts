@@ -10,12 +10,39 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AboutRouteImport } from './routes/about'
+import { Route as DownloadRouteImport } from './routes/download'
+import { Route as PrivacyRouteImport } from './routes/privacy'
+import { Route as TermsRouteImport } from './routes/terms'
 import { Route as ApiDriveFoldersRouteImport } from './routes/api/drive/folders'
+import { Route as ApiDriveTokenRouteImport } from './routes/api/drive/token'
 import { Route as ApiDriveUploadRouteImport } from './routes/api/drive/upload'
+import { Route as ApiDriveOauthCallbackRouteImport } from './routes/api/drive/oauth/callback'
+import { Route as ApiDriveOauthStartRouteImport } from './routes/api/drive/oauth/start'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AboutRoute = AboutRouteImport.update({
+  id: '/about',
+  path: '/about',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DownloadRoute = DownloadRouteImport.update({
+  id: '/download',
+  path: '/download',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PrivacyRoute = PrivacyRouteImport.update({
+  id: '/privacy',
+  path: '/privacy',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TermsRoute = TermsRouteImport.update({
+  id: '/terms',
+  path: '/terms',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiDriveFoldersRoute = ApiDriveFoldersRouteImport.update({
@@ -23,40 +50,114 @@ const ApiDriveFoldersRoute = ApiDriveFoldersRouteImport.update({
   path: '/api/drive/folders',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiDriveTokenRoute = ApiDriveTokenRouteImport.update({
+  id: '/api/drive/token',
+  path: '/api/drive/token',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiDriveUploadRoute = ApiDriveUploadRouteImport.update({
   id: '/api/drive/upload',
   path: '/api/drive/upload',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiDriveOauthCallbackRoute = ApiDriveOauthCallbackRouteImport.update({
+  id: '/api/drive/oauth/callback',
+  path: '/api/drive/oauth/callback',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiDriveOauthStartRoute = ApiDriveOauthStartRouteImport.update({
+  id: '/api/drive/oauth/start',
+  path: '/api/drive/oauth/start',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/about': typeof AboutRoute
+  '/download': typeof DownloadRoute
+  '/privacy': typeof PrivacyRoute
+  '/terms': typeof TermsRoute
   '/api/drive/folders': typeof ApiDriveFoldersRoute
+  '/api/drive/token': typeof ApiDriveTokenRoute
   '/api/drive/upload': typeof ApiDriveUploadRoute
+  '/api/drive/oauth/callback': typeof ApiDriveOauthCallbackRoute
+  '/api/drive/oauth/start': typeof ApiDriveOauthStartRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/about': typeof AboutRoute
+  '/download': typeof DownloadRoute
+  '/privacy': typeof PrivacyRoute
+  '/terms': typeof TermsRoute
   '/api/drive/folders': typeof ApiDriveFoldersRoute
+  '/api/drive/token': typeof ApiDriveTokenRoute
   '/api/drive/upload': typeof ApiDriveUploadRoute
+  '/api/drive/oauth/callback': typeof ApiDriveOauthCallbackRoute
+  '/api/drive/oauth/start': typeof ApiDriveOauthStartRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/about': typeof AboutRoute
+  '/download': typeof DownloadRoute
+  '/privacy': typeof PrivacyRoute
+  '/terms': typeof TermsRoute
   '/api/drive/folders': typeof ApiDriveFoldersRoute
+  '/api/drive/token': typeof ApiDriveTokenRoute
   '/api/drive/upload': typeof ApiDriveUploadRoute
+  '/api/drive/oauth/callback': typeof ApiDriveOauthCallbackRoute
+  '/api/drive/oauth/start': typeof ApiDriveOauthStartRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/api/drive/folders' | '/api/drive/upload'
+  fullPaths:
+    | '/'
+    | '/about'
+    | '/download'
+    | '/privacy'
+    | '/terms'
+    | '/api/drive/folders'
+    | '/api/drive/token'
+    | '/api/drive/upload'
+    | '/api/drive/oauth/callback'
+    | '/api/drive/oauth/start'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/api/drive/folders' | '/api/drive/upload'
-  id: '__root__' | '/' | '/api/drive/folders' | '/api/drive/upload'
+  to:
+    | '/'
+    | '/about'
+    | '/download'
+    | '/privacy'
+    | '/terms'
+    | '/api/drive/folders'
+    | '/api/drive/token'
+    | '/api/drive/upload'
+    | '/api/drive/oauth/callback'
+    | '/api/drive/oauth/start'
+  id:
+    | '__root__'
+    | '/'
+    | '/about'
+    | '/download'
+    | '/privacy'
+    | '/terms'
+    | '/api/drive/folders'
+    | '/api/drive/token'
+    | '/api/drive/upload'
+    | '/api/drive/oauth/callback'
+    | '/api/drive/oauth/start'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AboutRoute: typeof AboutRoute
+  DownloadRoute: typeof DownloadRoute
+  PrivacyRoute: typeof PrivacyRoute
+  TermsRoute: typeof TermsRoute
   ApiDriveFoldersRoute: typeof ApiDriveFoldersRoute
+  ApiDriveTokenRoute: typeof ApiDriveTokenRoute
   ApiDriveUploadRoute: typeof ApiDriveUploadRoute
+  ApiDriveOauthCallbackRoute: typeof ApiDriveOauthCallbackRoute
+  ApiDriveOauthStartRoute: typeof ApiDriveOauthStartRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -68,11 +169,46 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/about': {
+      id: '/about'
+      path: '/about'
+      fullPath: '/about'
+      preLoaderRoute: typeof AboutRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/download': {
+      id: '/download'
+      path: '/download'
+      fullPath: '/download'
+      preLoaderRoute: typeof DownloadRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/privacy': {
+      id: '/privacy'
+      path: '/privacy'
+      fullPath: '/privacy'
+      preLoaderRoute: typeof PrivacyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/terms': {
+      id: '/terms'
+      path: '/terms'
+      fullPath: '/terms'
+      preLoaderRoute: typeof TermsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/drive/folders': {
       id: '/api/drive/folders'
       path: '/api/drive/folders'
       fullPath: '/api/drive/folders'
       preLoaderRoute: typeof ApiDriveFoldersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/drive/token': {
+      id: '/api/drive/token'
+      path: '/api/drive/token'
+      fullPath: '/api/drive/token'
+      preLoaderRoute: typeof ApiDriveTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/drive/upload': {
@@ -82,14 +218,45 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiDriveUploadRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/drive/oauth/callback': {
+      id: '/api/drive/oauth/callback'
+      path: '/api/drive/oauth/callback'
+      fullPath: '/api/drive/oauth/callback'
+      preLoaderRoute: typeof ApiDriveOauthCallbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/drive/oauth/start': {
+      id: '/api/drive/oauth/start'
+      path: '/api/drive/oauth/start'
+      fullPath: '/api/drive/oauth/start'
+      preLoaderRoute: typeof ApiDriveOauthStartRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AboutRoute: AboutRoute,
+  DownloadRoute: DownloadRoute,
+  PrivacyRoute: PrivacyRoute,
+  TermsRoute: TermsRoute,
   ApiDriveFoldersRoute: ApiDriveFoldersRoute,
+  ApiDriveTokenRoute: ApiDriveTokenRoute,
   ApiDriveUploadRoute: ApiDriveUploadRoute,
+  ApiDriveOauthCallbackRoute: ApiDriveOauthCallbackRoute,
+  ApiDriveOauthStartRoute: ApiDriveOauthStartRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
