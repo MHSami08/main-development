@@ -1458,22 +1458,106 @@ function PreviewModal({
   onClose: () => void;
   onCrop: () => void;
 }) {
+  const stageRef = useRef<HTMLDivElement | null>(null);
+  const [zoom, setZoom] = useState(1);
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const dragRef = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
+  const stateRef = useRef({ zoom, offset });
+  stateRef.current = { zoom, offset };
+
+  // lock background scroll while open
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, []);
+
+  useEffect(() => {
+    const el = stageRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const { zoom: z, offset: off } = stateRef.current;
+      const dy = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 100 : 1);
+      const next = Math.min(8, Math.max(1, z * Math.exp(-dy * 0.0018)));
+      const rect = el.getBoundingClientRect();
+      const px = e.clientX - rect.left - rect.width / 2;
+      const py = e.clientY - rect.top - rect.height / 2;
+      const k = next / z;
+      const nx = px - (px - off.x) * k;
+      const ny = py - (py - off.y) * k;
+      setZoom(next);
+      setOffset(next === 1 ? { x: 0, y: 0 } : { x: nx, y: ny });
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, []);
+
+  const reset = () => {
+    setZoom(1);
+    setOffset({ x: 0, y: 0 });
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-0 backdrop-blur-sm sm:items-center sm:p-4">
       <div className="flex max-h-[95vh] w-full max-w-2xl flex-col overflow-hidden rounded-t-2xl border border-border bg-card shadow-2xl sm:rounded-2xl">
         <div className="flex items-center justify-between border-b border-border px-4 py-3">
           <h3 className="text-sm font-semibold text-foreground">Image #{item.uploadOrder}</h3>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            className="grid h-8 w-8 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-          >
-            <X className="h-4 w-4" />
-          </button>
+          <div className="flex items-center gap-2">
+            <span className="rounded-md bg-muted px-2 py-1 text-[11px] font-medium text-muted-foreground">
+              {Math.round(zoom * 100)}%
+            </span>
+            <button
+              type="button"
+              onClick={reset}
+              className="rounded-md border border-border px-2 py-1 text-[11px] font-medium text-muted-foreground hover:border-primary hover:text-primary"
+            >
+              Reset
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close"
+              className="grid h-8 w-8 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
         </div>
-        <div className="flex flex-1 items-center justify-center overflow-auto bg-muted p-3">
-          <img src={item.url} alt={item.originalName} className="max-h-[70vh] w-auto max-w-full rounded-md object-contain" />
+        <div
+          ref={stageRef}
+          className="relative flex h-[70vh] flex-1 items-center justify-center overflow-hidden bg-muted p-3"
+          style={{ touchAction: "none", cursor: zoom > 1 ? (dragRef.current ? "grabbing" : "grab") : "default" }}
+          onDoubleClick={() => (zoom > 1 ? reset() : setZoom(2))}
+          onPointerDown={(e) => {
+            if (zoom <= 1) return;
+            dragRef.current = { x: e.clientX, y: e.clientY, ox: offset.x, oy: offset.y };
+            (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+          }}
+          onPointerMove={(e) => {
+            const d = dragRef.current;
+            if (!d) return;
+            setOffset({ x: d.ox + (e.clientX - d.x), y: d.oy + (e.clientY - d.y) });
+          }}
+          onPointerUp={() => {
+            dragRef.current = null;
+          }}
+          onPointerLeave={() => {
+            dragRef.current = null;
+          }}
+        >
+          <img
+            src={item.url}
+            alt={item.originalName}
+            draggable={false}
+            className="max-h-full w-auto max-w-full select-none rounded-md object-contain"
+            style={{
+              transform: `translate(${offset.x}px, ${offset.y}px) scale(${zoom})`,
+              transition: dragRef.current ? "none" : "transform 60ms linear",
+            }}
+          />
         </div>
         <div className="flex flex-col gap-2 border-t border-border p-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0 truncate text-xs text-muted-foreground">{item.originalName}</div>
@@ -1500,6 +1584,7 @@ function PreviewModal({
     </div>
   );
 }
+
 
 // -----------------------------------------------------------------------------
 // MIUI Gallery-style crop editor

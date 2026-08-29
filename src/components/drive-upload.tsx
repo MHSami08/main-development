@@ -9,6 +9,8 @@ import {
   classifyError,
   type ControllerStats,
 } from "@/lib/adaptive-concurrency";
+import { computeBatchId, notifyBatchComplete } from "@/lib/notify-client";
+
 
 type FolderType = { id: string; name: string };
 type FolderResponse = {
@@ -444,7 +446,18 @@ export function DriveUpload({ files }: Props) {
           setUploadDone(`Uploaded ${files.length} file${files.length === 1 ? "" : "s"} to "${data.currentName}".`);
           persistCompleted(folderId, new Set());
           setCompleted(new Set());
+          // Fire-and-forget Gmail notification: one email per completed batch.
+          void (async () => {
+            const names = files.map((f) => f.name);
+            await notifyBatchComplete({
+              token: await getToken().catch(() => null),
+              batchId: computeBatchId(folderId, names),
+              batchName: data.currentName,
+              imageCount: files.length,
+            });
+          })();
         }
+
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
