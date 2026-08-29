@@ -143,11 +143,13 @@ const esc = (s: string) =>
 export function buildUploadEmail(info: {
   userName: string;
   userEmail: string;
-  batchName: string;
+  folderName: string;
+  rangeName?: string | null;
+  pageRange?: { start: string; end: string } | null;
   imageCount: number;
 }): { subject: string; html: string } {
   const { date, time } = formatDhaka(new Date());
-  const subject = `New Upload — ${info.batchName} — ${info.userName}`;
+  const subject = `New Upload — ${info.folderName} — ${info.userName}`;
   const row = (label: string, value: string) =>
     `<tr><td style="padding:6px 12px 6px 0;color:#6b7280;font-size:13px">${esc(label)}</td><td style="padding:6px 0;font-size:14px;color:#111827;font-weight:600">${esc(value)}</td></tr>`;
   const html = `<div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;max-width:560px;margin:0 auto;padding:24px">
@@ -155,7 +157,9 @@ export function buildUploadEmail(info: {
   <table style="border-collapse:collapse;width:100%">
     ${row("User", info.userName)}
     ${row("Email", info.userEmail)}
-    ${row("Batch", info.batchName)}
+    ${row("Folder", info.folderName)}
+    ${info.rangeName ? row("Range", info.rangeName) : ""}
+    ${info.pageRange ? row("Pages", `\u09aa\u09c3\u09b7\u09cd\u09a0\u09be (${info.pageRange.start}-${info.pageRange.end})`) : ""}
     ${row("Pictures", String(info.imageCount))}
     ${row("Date", date)}
     ${row("Time", `${time} (Asia/Dhaka)`)}

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth, useUser, SignInButton, SignedIn, SignedOut } from "@clerk/clerk-react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -9,7 +9,7 @@ import {
   classifyError,
   type ControllerStats,
 } from "@/lib/adaptive-concurrency";
-import { computeBatchId, notifyBatchComplete } from "@/lib/notify-client";
+import { computeBatchId, computePageRange, notifyBatchComplete } from "@/lib/notify-client";
 
 
 type FolderType = { id: string; name: string };
@@ -22,6 +22,8 @@ type FolderResponse = {
 
 type Props = {
   files: { file: Blob; name: string }[];
+  /** ZIP-style batch name, e.g. "Physics 2nd Page (6-11)". */
+  rangeName?: string | null;
 };
 
 function RequestAccessNote({ user }: { user: ReturnType<typeof useUser>["user"] }) {
@@ -120,12 +122,18 @@ function FuelEmptyNote({ user }: { user: ReturnType<typeof useUser>["user"] }) {
     </div>
   );
 }
-export function DriveUpload({ files }: Props) {
+export function DriveUpload({ files, rangeName }: Props) {
   const { isSignedIn, user, isLoaded } = useUser();
   const { getToken } = useAuth();
 
-  const role = (user?.publicMetadata as { role?: string } | undefined)?.role ?? null;
-  const hasRole = role === "mustakim-s-student";
+  // role may be a string ("admin") or an array (["mustakim-s-student","admin"])
+  const rawRole = (user?.publicMetadata as { role?: unknown } | undefined)?.role;
+  const roles: string[] = Array.isArray(rawRole)
+    ? rawRole.filter((r): r is string => typeof r === "string")
+    : typeof rawRole === "string"
+      ? [rawRole]
+      : [];
+  const hasRole = roles.includes("mustakim-s-student") || roles.includes("admin");
 
   const [breadcrumb, setBreadcrumb] = useState<{ id: string; name: string }[]>([]);
   const [data, setData] = useState<FolderResponse | null>(null);
@@ -144,6 +152,49 @@ export function DriveUpload({ files }: Props) {
   const [stats, setStats] = useState<ControllerStats | null>(null);
   const pausedRef = useRef(false);
   const PROGRESS_KEY = "drive-upload-progress-v1";
+
+  // ---- Drive access token manager (shared + pre-warmed so uploads start instantly) ----
+  const tokenCacheRef = useRef<{ accessToken: string; expiresAt: number } | null>(null);
+  const tokenInFlightRef = useRef<Promise<string> | null>(null);
+
+  const fetchDriveToken = useCallback(
+    async (folderId: string, force = false): Promise<string> => {
+      const now = Math.floor(Date.now() / 1000);
+      const cached = tokenCacheRef.current;
+      if (!force && cached && cached.expiresAt - 90 > now) return cached.accessToken;
+      if (!force && tokenInFlightRef.current) return tokenInFlightRef.current;
+      const p = (async () => {
+        const clerkToken = await getToken({ skipCache: force });
+        const res = await fetch("/api/drive/token", {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${clerkToken ?? ""}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ folderId }),
+        });
+        if (!res.ok) throw new Error(`Could not get Drive token [${res.status}]: ${await res.text()}`);
+        const json = (await res.json()) as { accessToken: string; expiresAt: number };
+        tokenCacheRef.current = json;
+        return json.accessToken;
+      })();
+      tokenInFlightRef.current = p;
+      try {
+        return await p;
+      } finally {
+        if (tokenInFlightRef.current === p) tokenInFlightRef.current = null;
+      }
+    },
+    [getToken],
+  );
+
+  // Pre-warm the token the moment a folder is open and files are ready, so the
+  // first upload doesn't pay for the Clerk + token round-trip.
+  useEffect(() => {
+    if (!data || files.length === 0 || !hasRole) return;
+    void fetchDriveToken(data.currentId).catch(() => {});
+  }, [data?.currentId, files.length, hasRole, fetchDriveToken]);
+
 
   useEffect(() => {
     if (!data) return;
@@ -240,7 +291,18 @@ export function DriveUpload({ files }: Props) {
     pausedRef.current = false;
     setPaused(false);
 
-    const ctrl = new AdaptiveConcurrencyController({ start: 15, max: 60, min: 2 });
+    // Never spin up more workers than there are files (a 5-file batch used to
+    // open 15 slots and thrash), and ramp up quickly when the network is happy.
+    const startConcurrency = Math.max(1, Math.min(6, pending.length));
+    const ctrl = new AdaptiveConcurrencyController({
+      start: startConcurrency,
+      max: Math.max(2, Math.min(60, pending.length)),
+      min: 1,
+      successesToRamp: 2,
+      stableWindowMs: 400,
+      rampStep: 4,
+      cooldownMs: 1200,
+    });
     setStats(ctrl.stats());
 
     const done = { count: initialCompleted.size };
@@ -254,84 +316,86 @@ export function DriveUpload({ files }: Props) {
     const isNetworkError = (e: unknown) =>
       e instanceof TypeError || (typeof navigator !== "undefined" && !navigator.onLine);
 
-    // ---- Drive access token manager (server only mints tokens, never proxies bytes) ----
-    let tokenCache: { accessToken: string; expiresAt: number } | null = null;
-    let tokenInFlight: Promise<string> | null = null;
-    const fetchDriveToken = async (force: boolean): Promise<string> => {
-      const now = Math.floor(Date.now() / 1000);
-      if (!force && tokenCache && tokenCache.expiresAt - 90 > now) return tokenCache.accessToken;
-      if (tokenInFlight) return tokenInFlight;
-      tokenInFlight = (async () => {
-        try {
-          const clerkToken = await getToken({ skipCache: force });
-          const res = await fetch("/api/drive/token", {
-            method: "POST",
-            headers: {
-              authorization: `Bearer ${clerkToken ?? ""}`,
-              "content-type": "application/json",
-            },
-            body: JSON.stringify({ folderId }),
-          });
-          if (!res.ok) throw new Error(`Could not get Drive token [${res.status}]: ${await res.text()}`);
-          const json = (await res.json()) as { accessToken: string; expiresAt: number };
-          tokenCache = json;
-          return json.accessToken;
-        } finally {
-          tokenInFlight = null;
-        }
-      })();
-      return tokenInFlight;
-    };
-
     const UPLOAD_TIMEOUT_MS = 180_000;
     const MAX_ATTEMPTS = 5;
+    /** Below this size a single multipart request beats a 2-round-trip resumable session. */
+    const MULTIPART_LIMIT = 8 * 1024 * 1024;
 
-    /** Direct browser -> Google Drive resumable upload. No binary hits our backend. */
-    const uploadDirect = async (file: Blob, name: string, force: boolean) => {
-      const token = await fetchDriveToken(force);
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), UPLOAD_TIMEOUT_MS);
-      try {
-        const initUrl =
-          "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&supportsAllDrives=true&fields=id,name";
-        const initRes = await fetch(initUrl, {
+    const httpError = (name: string, what: string, status: number, text: string) => {
+      const err = new Error(`${what} for ${name} [${status}]: ${text.slice(0, 300)}`);
+      (err as { status?: number }).status = status;
+      return err;
+    };
+
+    /** Single-request upload (metadata + bytes together) — fastest path for images. */
+    const uploadMultipart = async (file: Blob, name: string, token: string, signal: AbortSignal) => {
+      const mime = file.type || "application/octet-stream";
+      const boundary = `prp${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
+      const meta = JSON.stringify({ name, parents: [folderId], mimeType: mime });
+      const body = new Blob([
+        `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${meta}\r\n--${boundary}\r\nContent-Type: ${mime}\r\n\r\n`,
+        file,
+        `\r\n--${boundary}--\r\n`,
+      ]);
+      const res = await fetch(
+        "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id",
+        {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${token}`,
+            "content-type": `multipart/related; boundary=${boundary}`,
+          },
+          body,
+          signal,
+        },
+      );
+      if (!res.ok) throw httpError(name, "Upload failed", res.status, await res.text());
+    };
+
+    /** Resumable session — used for large files where a restart would be costly. */
+    const uploadResumable = async (file: Blob, name: string, token: string, signal: AbortSignal) => {
+      const mime = file.type || "application/octet-stream";
+      const initRes = await fetch(
+        "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&supportsAllDrives=true&fields=id,name",
+        {
           method: "POST",
           headers: {
             authorization: `Bearer ${token}`,
             "content-type": "application/json; charset=UTF-8",
-            "X-Upload-Content-Type": file.type || "application/octet-stream",
+            "X-Upload-Content-Type": mime,
           },
-          body: JSON.stringify({
-            name,
-            parents: [folderId],
-            mimeType: file.type || "application/octet-stream",
-          }),
-          signal: controller.signal,
-        });
-        if (!initRes.ok) {
-          const text = await initRes.text();
-          const err = new Error(`Drive init failed for ${name} [${initRes.status}]: ${text.slice(0, 300)}`);
-          (err as { status?: number }).status = initRes.status;
-          throw err;
-        }
-        const location = initRes.headers.get("location");
-        if (!location) throw new Error(`Drive did not return an upload URL for ${name}`);
-        const putRes = await fetch(location, {
-          method: "PUT",
-          headers: { "content-type": file.type || "application/octet-stream" },
-          body: file,
-          signal: controller.signal,
-        });
-        if (!putRes.ok) {
-          const text = await putRes.text();
-          const err = new Error(`Upload failed for ${name} [${putRes.status}]: ${text.slice(0, 300)}`);
-          (err as { status?: number }).status = putRes.status;
-          throw err;
+          body: JSON.stringify({ name, parents: [folderId], mimeType: mime }),
+          signal,
+        },
+      );
+      if (!initRes.ok) throw httpError(name, "Drive init failed", initRes.status, await initRes.text());
+      const location = initRes.headers.get("location");
+      if (!location) throw new Error(`Drive did not return an upload URL for ${name}`);
+      const putRes = await fetch(location, {
+        method: "PUT",
+        headers: { "content-type": mime },
+        body: file,
+        signal,
+      });
+      if (!putRes.ok) throw httpError(name, "Upload failed", putRes.status, await putRes.text());
+    };
+
+    /** Direct browser -> Google Drive. No binary ever hits our backend. */
+    const uploadDirect = async (file: Blob, name: string, force: boolean) => {
+      const token = await fetchDriveToken(folderId, force);
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), UPLOAD_TIMEOUT_MS);
+      try {
+        if (file.size <= MULTIPART_LIMIT) {
+          await uploadMultipart(file, name, token, controller.signal);
+        } else {
+          await uploadResumable(file, name, token, controller.signal);
         }
       } finally {
         clearTimeout(timer);
       }
     };
+
 
     const uploadOne = async (file: Blob, name: string) => {
       for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
@@ -452,7 +516,9 @@ export function DriveUpload({ files }: Props) {
             await notifyBatchComplete({
               token: await getToken().catch(() => null),
               batchId: computeBatchId(folderId, names),
-              batchName: data.currentName,
+              folderName: data.currentName,
+              rangeName: rangeName ?? null,
+              pageRange: computePageRange(names),
               imageCount: files.length,
             });
           })();

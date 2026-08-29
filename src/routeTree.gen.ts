@@ -16,6 +16,7 @@ import { Route as NotificationsRouteImport } from './routes/notifications'
 import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as TermsRouteImport } from './routes/terms'
 import { Route as ApiDriveFoldersRouteImport } from './routes/api/drive/folders'
+import { Route as ApiDrivePickerConfigRouteImport } from './routes/api/drive/picker-config'
 import { Route as ApiDriveTokenRouteImport } from './routes/api/drive/token'
 import { Route as ApiDriveUploadRouteImport } from './routes/api/drive/upload'
 import { Route as ApiNotifyHistoryRouteImport } from './routes/api/notify/history'
@@ -59,6 +60,11 @@ const TermsRoute = TermsRouteImport.update({
 const ApiDriveFoldersRoute = ApiDriveFoldersRouteImport.update({
   id: '/api/drive/folders',
   path: '/api/drive/folders',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiDrivePickerConfigRoute = ApiDrivePickerConfigRouteImport.update({
+  id: '/api/drive/picker-config',
+  path: '/api/drive/picker-config',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiDriveTokenRoute = ApiDriveTokenRouteImport.update({
@@ -115,6 +121,7 @@ export interface FileRoutesByFullPath {
   '/privacy': typeof PrivacyRoute
   '/terms': typeof TermsRoute
   '/api/drive/folders': typeof ApiDriveFoldersRoute
+  '/api/drive/picker-config': typeof ApiDrivePickerConfigRoute
   '/api/drive/token': typeof ApiDriveTokenRoute
   '/api/drive/upload': typeof ApiDriveUploadRoute
   '/api/notify/history': typeof ApiNotifyHistoryRoute
@@ -133,6 +140,7 @@ export interface FileRoutesByTo {
   '/privacy': typeof PrivacyRoute
   '/terms': typeof TermsRoute
   '/api/drive/folders': typeof ApiDriveFoldersRoute
+  '/api/drive/picker-config': typeof ApiDrivePickerConfigRoute
   '/api/drive/token': typeof ApiDriveTokenRoute
   '/api/drive/upload': typeof ApiDriveUploadRoute
   '/api/notify/history': typeof ApiNotifyHistoryRoute
@@ -152,6 +160,7 @@ export interface FileRoutesById {
   '/privacy': typeof PrivacyRoute
   '/terms': typeof TermsRoute
   '/api/drive/folders': typeof ApiDriveFoldersRoute
+  '/api/drive/picker-config': typeof ApiDrivePickerConfigRoute
   '/api/drive/token': typeof ApiDriveTokenRoute
   '/api/drive/upload': typeof ApiDriveUploadRoute
   '/api/notify/history': typeof ApiNotifyHistoryRoute
@@ -172,6 +181,7 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/terms'
     | '/api/drive/folders'
+    | '/api/drive/picker-config'
     | '/api/drive/token'
     | '/api/drive/upload'
     | '/api/notify/history'
@@ -190,6 +200,7 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/terms'
     | '/api/drive/folders'
+    | '/api/drive/picker-config'
     | '/api/drive/token'
     | '/api/drive/upload'
     | '/api/notify/history'
@@ -208,6 +219,7 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/terms'
     | '/api/drive/folders'
+    | '/api/drive/picker-config'
     | '/api/drive/token'
     | '/api/drive/upload'
     | '/api/notify/history'
@@ -227,6 +239,7 @@ export interface RootRouteChildren {
   PrivacyRoute: typeof PrivacyRoute
   TermsRoute: typeof TermsRoute
   ApiDriveFoldersRoute: typeof ApiDriveFoldersRoute
+  ApiDrivePickerConfigRoute: typeof ApiDrivePickerConfigRoute
   ApiDriveTokenRoute: typeof ApiDriveTokenRoute
   ApiDriveUploadRoute: typeof ApiDriveUploadRoute
   ApiNotifyHistoryRoute: typeof ApiNotifyHistoryRoute
@@ -287,6 +300,13 @@ declare module '@tanstack/react-router' {
       path: '/api/drive/folders'
       fullPath: '/api/drive/folders'
       preLoaderRoute: typeof ApiDriveFoldersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/drive/picker-config': {
+      id: '/api/drive/picker-config'
+      path: '/api/drive/picker-config'
+      fullPath: '/api/drive/picker-config'
+      preLoaderRoute: typeof ApiDrivePickerConfigRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/drive/token': {
@@ -363,6 +383,7 @@ const rootRouteChildren: RootRouteChildren = {
   PrivacyRoute: PrivacyRoute,
   TermsRoute: TermsRoute,
   ApiDriveFoldersRoute: ApiDriveFoldersRoute,
+  ApiDrivePickerConfigRoute: ApiDrivePickerConfigRoute,
   ApiDriveTokenRoute: ApiDriveTokenRoute,
   ApiDriveUploadRoute: ApiDriveUploadRoute,
   ApiNotifyHistoryRoute: ApiNotifyHistoryRoute,

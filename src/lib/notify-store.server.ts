@@ -8,6 +8,8 @@ export type NotificationRecord = {
   userName: string;
   userEmail: string;
   batchName: string;
+  rangeName?: string | null;
+  pageRange?: { start: string; end: string } | null;
   imageCount: number;
   status: NotificationStatus;
   createdAt: number;

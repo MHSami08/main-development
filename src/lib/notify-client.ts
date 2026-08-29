@@ -34,10 +34,33 @@ function rememberSent(batchId: string) {
   }
 }
 
+/**
+ * Derive the uploaded page range from the generated filenames.
+ * Uses the last number found in each name and preserves its zero padding.
+ * Returns null when no numbers can be found.
+ */
+export function computePageRange(names: string[]): { start: string; end: string } | null {
+  const nums: { value: number; raw: string }[] = [];
+  for (const n of names) {
+    const base = n.replace(/\.[^.]+$/, "");
+    const matches = base.match(/\d+/g);
+    if (!matches || matches.length === 0) continue;
+    const raw = matches[matches.length - 1];
+    nums.push({ value: parseInt(raw, 10), raw });
+  }
+  if (nums.length === 0) return null;
+  const sorted = [...nums].sort((a, b) => a.value - b.value);
+  const width = Math.max(...nums.map((n) => n.raw.length));
+  const pad = (v: number) => String(v).padStart(width, "0");
+  return { start: pad(sorted[0].value), end: pad(sorted[sorted.length - 1].value) };
+}
+
 export async function notifyBatchComplete(params: {
   token: string | null;
   batchId: string;
-  batchName: string;
+  folderName: string;
+  rangeName?: string | null;
+  pageRange: { start: string; end: string } | null;
   imageCount: number;
 }): Promise<void> {
   if (sentIds().includes(params.batchId)) return;
@@ -50,7 +73,9 @@ export async function notifyBatchComplete(params: {
       },
       body: JSON.stringify({
         batchId: params.batchId,
-        batchName: params.batchName,
+        folderName: params.folderName,
+        rangeName: params.rangeName ?? null,
+        pageRange: params.pageRange,
         imageCount: params.imageCount,
       }),
     });

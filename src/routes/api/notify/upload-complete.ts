@@ -17,14 +17,33 @@ export const Route = createFileRoute("/api/notify/upload-complete")({
 
         const body = (await request.json().catch(() => ({}))) as {
           batchId?: string;
+          folderName?: string;
           batchName?: string;
+          rangeName?: string | null;
+          pageRange?: { start?: unknown; end?: unknown } | null;
           imageCount?: number;
         };
         const batchId = typeof body.batchId === "string" ? body.batchId.slice(0, 200) : "";
-        const batchName =
-          typeof body.batchName === "string" && body.batchName.trim()
-            ? body.batchName.trim().slice(0, 200)
-            : "Untitled batch";
+        const rawFolder =
+          typeof body.folderName === "string" && body.folderName.trim()
+            ? body.folderName
+            : typeof body.batchName === "string"
+              ? body.batchName
+              : "";
+        const folderName = rawFolder.trim() ? rawFolder.trim().slice(0, 200) : "Untitled folder";
+        const rangeName =
+          typeof body.rangeName === "string" && body.rangeName.trim()
+            ? body.rangeName.trim().slice(0, 200)
+            : null;
+        const pageRange =
+          body.pageRange &&
+          typeof body.pageRange.start === "string" &&
+          typeof body.pageRange.end === "string"
+            ? {
+                start: body.pageRange.start.slice(0, 10),
+                end: body.pageRange.end.slice(0, 10),
+              }
+            : null;
         const imageCount = Number.isFinite(body.imageCount) ? Math.floor(Number(body.imageCount)) : 0;
         if (!batchId || imageCount <= 0) {
           return Response.json({ error: "Missing batchId or imageCount" }, { status: 400 });
@@ -40,7 +59,9 @@ export const Route = createFileRoute("/api/notify/upload-complete")({
           clerkUserId: identity.userId,
           userName: identity.name,
           userEmail: identity.email,
-          batchName,
+          batchName: folderName,
+          rangeName,
+          pageRange,
           imageCount,
         });
 
@@ -48,7 +69,9 @@ export const Route = createFileRoute("/api/notify/upload-complete")({
           const { subject, html } = buildUploadEmail({
             userName: identity.name,
             userEmail: identity.email,
-            batchName,
+            folderName,
+            rangeName,
+            pageRange,
             imageCount,
           });
           await sendGmail({ subject, html });

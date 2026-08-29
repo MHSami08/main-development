@@ -1052,6 +1052,11 @@ export function NoteRenamer() {
                 file: it.file,
                 name: previews[i],
               }))}
+              rangeName={
+                computedEnd !== null
+                  ? `${baseName.trim()} Page (${startNum}-${computedEnd})`
+                  : null
+              }
             />
           </section>
         )}
