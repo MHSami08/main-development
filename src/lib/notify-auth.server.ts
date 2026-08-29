@@ -89,6 +89,7 @@ export async function requireUploaderIdentity(request: Request): Promise<NotifyI
 /** Admin-only (Clerk role "admin" or listed in ADMIN_CLERK_USER_IDS). */
 export async function requireAdminIdentity(request: Request): Promise<NotifyIdentity> {
   const token = cookieToken(request);
+  let cookieFailed = false;
   const userId = token
     ? await (async () => {
         const { verifyToken } = await import("@clerk/backend");
@@ -98,11 +99,19 @@ export async function requireAdminIdentity(request: Request): Promise<NotifyIden
           })) as { sub?: string };
           return claims.sub ?? null;
         } catch {
+          cookieFailed = true;
           return null;
         }
       })()
     : null;
+  if (cookieFailed) console.log("[notify-auth] __session cookie present but invalid; falling back to bearer");
   const id = await loadIdentity(userId ?? (await verifyBearer(request)));
-  if (!id.isAdmin) throw new Response("Forbidden: admin only", { status: 403 });
+  if (!id.isAdmin) {
+    console.log(
+      `[notify-auth] admin access denied: userId=${id.userId} roles=${id.roles.join(",") || "none"} status=403`,
+    );
+    throw new Response("Forbidden: admin only", { status: 403 });
+  }
+  console.log(`[notify-auth] admin access granted: userId=${id.userId} status=200`);
   return id;
 }
