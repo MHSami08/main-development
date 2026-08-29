@@ -45,7 +45,13 @@ function cookieToken(request: Request): string | null {
 async function loadIdentity(userId: string): Promise<NotifyIdentity> {
   const user = await getClerk().users.getUser(userId);
   const meta = (user.publicMetadata ?? {}) as { role?: unknown };
-  const role = typeof meta.role === "string" ? meta.role : null;
+  // role may be a string ("admin") or an array (["mustakim-s-student","admin"])
+  const roles: string[] = Array.isArray(meta.role)
+    ? meta.role.filter((r): r is string => typeof r === "string")
+    : typeof meta.role === "string"
+      ? [meta.role]
+      : [];
+  const role = roles[0] ?? null;
   const primary =
     user.emailAddresses.find((e) => e.id === user.primaryEmailAddressId) ?? user.emailAddresses[0];
   const name =
