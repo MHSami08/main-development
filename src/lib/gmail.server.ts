@@ -6,7 +6,6 @@ const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GMAIL_API = "https://gmail.googleapis.com/gmail/v1/users/me";
 
 export const GMAIL_SEND_SCOPE = "https://www.googleapis.com/auth/gmail.send";
-export const GMAIL_PROFILE_SCOPE = "https://www.googleapis.com/auth/gmail.send";
 
 export function getGoogleOAuthClient(): { clientId: string; clientSecret: string } {
   const clientId = process.env.GOOGLE_OAUTH_CLIENT_ID ?? process.env.GOOGLE_CLIENT_ID;
@@ -82,19 +81,8 @@ async function gmailFetch(path: string, init: RequestInit = {}): Promise<Respons
   return res;
 }
 
-let cachedSender: string | null = null;
-
-/** The authenticated Google account's own Gmail address — never client supplied. */
-export async function getSenderAddress(): Promise<string> {
-  if (cachedSender) return cachedSender;
-  const res = await gmailFetch("/profile");
-  if (!res.ok) {
-    throw new Error(`Gmail profile failed [${res.status}]: ${(await res.text()).slice(0, 300)}`);
-  }
-  const data = (await res.json()) as { emailAddress: string };
-  cachedSender = data.emailAddress;
-  return cachedSender;
-}
+// No From header: Gmail defaults it to the authenticated account, and the
+// gmail.send scope does NOT cover the /profile endpoint, so we must not call it.
 
 const b64 = (s: string) =>
   btoa(Array.from(new TextEncoder().encode(s), (b) => String.fromCharCode(b)).join(""));
@@ -105,9 +93,7 @@ export async function sendGmail(params: {
   html: string;
 }): Promise<{ id: string }> {
   const to = getNotificationEmail();
-  const from = await getSenderAddress();
   const raw = [
-    `From: ${from}`,
     `To: ${to}`,
     `Subject: ${header(params.subject)}`,
     "MIME-Version: 1.0",
