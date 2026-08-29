@@ -68,14 +68,16 @@ async function loadIdentity(userId: string): Promise<NotifyIdentity> {
     role,
     name,
     email: primary?.emailAddress ?? "",
-    isAdmin: role === "admin" || adminIds.includes(userId),
+    isAdmin: roles.includes("admin") || adminIds.includes(userId),
   };
 }
 
 /** Any signed-in user with the upload role. Identity comes from Clerk, never the client. */
 export async function requireUploaderIdentity(request: Request): Promise<NotifyIdentity> {
   const id = await loadIdentity(await verifyBearer(request));
-  if (id.role !== UPLOAD_ROLE && !id.isAdmin) {
+  const roles = id.role ? [id.role] : [];
+  if (!roles.includes(UPLOAD_ROLE) && !id.isAdmin) {
+    console.log(`[notify-auth] upload access denied: userId=${id.userId} role=${id.role ?? "none"} status=403`);
     throw new Response("Forbidden", { status: 403 });
   }
   return id;
