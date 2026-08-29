@@ -16,6 +16,7 @@ function getClerk(): ClerkClient {
 export type NotifyIdentity = {
   userId: string;
   role: string | null;
+  roles: string[];
   name: string;
   email: string;
   isAdmin: boolean;
@@ -66,6 +67,7 @@ async function loadIdentity(userId: string): Promise<NotifyIdentity> {
   return {
     userId,
     role,
+    roles,
     name,
     email: primary?.emailAddress ?? "",
     isAdmin: roles.includes("admin") || adminIds.includes(userId),
@@ -75,9 +77,10 @@ async function loadIdentity(userId: string): Promise<NotifyIdentity> {
 /** Any signed-in user with the upload role. Identity comes from Clerk, never the client. */
 export async function requireUploaderIdentity(request: Request): Promise<NotifyIdentity> {
   const id = await loadIdentity(await verifyBearer(request));
-  const roles = id.role ? [id.role] : [];
-  if (!roles.includes(UPLOAD_ROLE) && !id.isAdmin) {
-    console.log(`[notify-auth] upload access denied: userId=${id.userId} role=${id.role ?? "none"} status=403`);
+  if (!id.roles.includes(UPLOAD_ROLE) && !id.isAdmin) {
+    console.log(
+      `[notify-auth] upload access denied: userId=${id.userId} roles=${id.roles.join(",") || "none"} status=403`,
+    );
     throw new Response("Forbidden", { status: 403 });
   }
   return id;
