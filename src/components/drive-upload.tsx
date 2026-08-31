@@ -140,7 +140,7 @@ export function DriveUpload({ files, rangeName }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
-  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  const [progress, setProgress] = useState<{ done: number; total: number; bytesDone: number; bytesTotal: number } | null>(null);
   const [uploadDone, setUploadDone] = useState<string | null>(null);
   const [paused, setPaused] = useState(false);
   const [offline, setOffline] = useState<boolean>(
@@ -188,12 +188,20 @@ export function DriveUpload({ files, rangeName }: Props) {
     [getToken],
   );
 
-  // Pre-warm the token the moment a folder is open and files are ready, so the
-  // first upload doesn't pay for the Clerk + token round-trip.
+  // Pre-warm the token as soon as a folder is open (before any file is picked),
+  // so pressing Upload never pays for the Clerk + token round-trip.
   useEffect(() => {
-    if (!data || files.length === 0 || !hasRole) return;
+    if (!data || !hasRole) return;
     void fetchDriveToken(data.currentId).catch(() => {});
-  }, [data?.currentId, files.length, hasRole, fetchDriveToken]);
+  }, [data?.currentId, hasRole, fetchDriveToken]);
+
+  // Second warm-up: the moment files are picked, make sure a fresh token is
+  // already in flight so pressing Upload starts transferring instantly.
+  useEffect(() => {
+    if (!data || !hasRole || files.length === 0) return;
+    void fetchDriveToken(data.currentId).catch(() => {});
+  }, [files.length, data?.currentId, hasRole, fetchDriveToken]);
+
 
 
   useEffect(() => {
@@ -291,25 +299,40 @@ export function DriveUpload({ files, rangeName }: Props) {
     pausedRef.current = false;
     setPaused(false);
 
-    // Never spin up more workers than there are files (a 5-file batch used to
-    // open 15 slots and thrash), and ramp up quickly when the network is happy.
-    const startConcurrency = Math.max(1, Math.min(6, pending.length));
+    // Small batches should go out all at once — no artificial warm-up.
+    const startConcurrency = Math.max(1, Math.min(12, pending.length));
     const ctrl = new AdaptiveConcurrencyController({
       start: startConcurrency,
-      max: Math.max(2, Math.min(60, pending.length)),
+      max: Math.max(2, Math.min(64, pending.length)),
       min: 1,
       successesToRamp: 2,
-      stableWindowMs: 400,
-      rampStep: 4,
-      cooldownMs: 1200,
+      stableWindowMs: 300,
+      rampStep: 6,
+      cooldownMs: 1000,
     });
     setStats(ctrl.stats());
 
+
     const done = { count: initialCompleted.size };
-    setProgress({ done: done.count, total: files.length });
-    let cursor = 0;
-    const localCompleted = new Set(initialCompleted);
+    // Byte-level progress: the bar moves as soon as the first byte leaves the
+    // browser instead of waiting for the first whole file to finish.
+    const totalBytes = files.reduce((sum, f) => sum + f.file.size, 0) || 1;
+    const bytesLoaded = new Map<string, number>();
+    for (const f of files) if (initialCompleted.has(f.name)) bytesLoaded.set(f.name, f.file.size);
+    let localCompleted: Set<string> = new Set(initialCompleted);
     const localFailed = new Map<string, string>();
+    const reportProgress = () => {
+      let loaded = 0;
+      for (const v of bytesLoaded.values()) loaded += v;
+      setProgress({
+        done: localCompleted.size + localFailed.size,
+        total: files.length,
+        bytesDone: Math.min(loaded, totalBytes),
+        bytesTotal: totalBytes,
+      });
+    };
+    reportProgress();
+    let cursor = 0;
     const activeNames = new Set<string>();
     const syncActive = () => setActive(new Set(activeNames));
 
@@ -327,6 +350,39 @@ export function DriveUpload({ files, rangeName }: Props) {
       return err;
     };
 
+    /**
+     * XHR-based upload with real byte-progress events (fetch cannot report
+     * upload progress in most browsers). Reports loaded bytes per file so the
+     * progress bar starts moving instantly instead of sitting at 0%.
+     */
+    const xhrSend = (
+      method: string,
+      url: string,
+      headers: Record<string, string>,
+      body: Blob | string,
+      signal: AbortSignal,
+      onProgress?: (loaded: number) => void,
+    ): Promise<{ status: number; text: string }> =>
+      new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open(method, url, true);
+        for (const [k, v] of Object.entries(headers)) xhr.setRequestHeader(k, v);
+        xhr.timeout = UPLOAD_TIMEOUT_MS;
+        if (onProgress) {
+          xhr.upload.onprogress = (e) => onProgress(e.loaded);
+        }
+        xhr.onload = () => resolve({ status: xhr.status, text: xhr.responseText });
+        xhr.onerror = () => reject(new TypeError("Network request failed"));
+        xhr.ontimeout = () => reject(new DOMException("Upload timed out", "AbortError"));
+        xhr.onabort = () => reject(new DOMException("Upload aborted", "AbortError"));
+        if (signal.aborted) {
+          xhr.abort();
+          return;
+        }
+        signal.addEventListener("abort", () => xhr.abort(), { once: true });
+        xhr.send(body);
+      });
+
     /** Single-request upload (metadata + bytes together) — fastest path for images. */
     const uploadMultipart = async (file: Blob, name: string, token: string, signal: AbortSignal) => {
       const mime = file.type || "application/octet-stream";
@@ -337,19 +393,23 @@ export function DriveUpload({ files, rangeName }: Props) {
         file,
         `\r\n--${boundary}--\r\n`,
       ]);
-      const res = await fetch(
+      const res = await xhrSend(
+        "POST",
         "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id",
         {
-          method: "POST",
-          headers: {
-            authorization: `Bearer ${token}`,
-            "content-type": `multipart/related; boundary=${boundary}`,
-          },
-          body,
-          signal,
+          authorization: `Bearer ${token}`,
+          "content-type": `multipart/related; boundary=${boundary}`,
+        },
+        body,
+        signal,
+        (loaded) => {
+          bytesLoaded.set(name, Math.min(loaded, file.size));
+          reportProgress();
         },
       );
-      if (!res.ok) throw httpError(name, "Upload failed", res.status, await res.text());
+      if (res.status < 200 || res.status >= 300) throw httpError(name, "Upload failed", res.status, res.text);
+      const json = (JSON.parse(res.text || "{}") as { id?: string });
+      return json.id ?? null;
     };
 
     /** Resumable session — used for large files where a restart would be costly. */
@@ -371,13 +431,20 @@ export function DriveUpload({ files, rangeName }: Props) {
       if (!initRes.ok) throw httpError(name, "Drive init failed", initRes.status, await initRes.text());
       const location = initRes.headers.get("location");
       if (!location) throw new Error(`Drive did not return an upload URL for ${name}`);
-      const putRes = await fetch(location, {
-        method: "PUT",
-        headers: { "content-type": mime },
-        body: file,
+      const putRes = await xhrSend(
+        "PUT",
+        location,
+        { "content-type": mime },
+        file,
         signal,
-      });
-      if (!putRes.ok) throw httpError(name, "Upload failed", putRes.status, await putRes.text());
+        (loaded) => {
+          bytesLoaded.set(name, Math.min(loaded, file.size));
+          reportProgress();
+        },
+      );
+      if (putRes.status < 200 || putRes.status >= 300) throw httpError(name, "Upload failed", putRes.status, putRes.text);
+      const json = (JSON.parse(putRes.text || "{}") as { id?: string });
+      return json.id ?? null;
     };
 
     /** Direct browser -> Google Drive. No binary ever hits our backend. */
@@ -387,14 +454,145 @@ export function DriveUpload({ files, rangeName }: Props) {
       const timer = setTimeout(() => controller.abort(), UPLOAD_TIMEOUT_MS);
       try {
         if (file.size <= MULTIPART_LIMIT) {
-          await uploadMultipart(file, name, token, controller.signal);
-        } else {
-          await uploadResumable(file, name, token, controller.signal);
+          return await uploadMultipart(file, name, token, controller.signal);
         }
+        return await uploadResumable(file, name, token, controller.signal);
       } finally {
         clearTimeout(timer);
       }
     };
+
+    // ---- Duplicate replacement -------------------------------------------
+    // Snapshot of what already lives in the target folder, fetched in parallel
+    // with the first uploads so it never delays the start of the batch.
+    // After each successful upload, every OLDER file with the same name is
+    // trashed, so the folder always keeps exactly the latest version.
+    const existingByName = (async () => {
+      const map = new Map<string, string[]>();
+      try {
+        const token = await fetchDriveToken(folderId);
+        let pageToken: string | undefined;
+        do {
+          const url = new URL("https://www.googleapis.com/drive/v3/files");
+          url.searchParams.set("q", `'${folderId}' in parents and trashed=false`);
+          url.searchParams.set("fields", "nextPageToken,files(id,name)");
+          url.searchParams.set("pageSize", "1000");
+          url.searchParams.set("supportsAllDrives", "true");
+          url.searchParams.set("includeItemsFromAllDrives", "true");
+          if (pageToken) url.searchParams.set("pageToken", pageToken);
+          const res = await fetch(url.toString(), {
+            headers: { authorization: `Bearer ${token}` },
+          });
+          if (!res.ok) break;
+          const json = (await res.json()) as {
+            files?: { id: string; name: string }[];
+            nextPageToken?: string;
+          };
+          for (const f of json.files ?? []) {
+            const list = map.get(f.name);
+            if (list) list.push(f.id);
+            else map.set(f.name, [f.id]);
+          }
+          pageToken = json.nextPageToken;
+        } while (pageToken);
+      } catch {
+        /* duplicate cleanup is best-effort; never block an upload */
+      }
+      return map;
+    })();
+
+    const cleanups = new Set<Promise<void>>();
+
+    const removeOlderDuplicates = async (name: string, keepId: string | null) => {
+      const map = await existingByName;
+      const olds = map.get(name);
+      if (!olds || olds.length === 0) return;
+      map.delete(name); // only ever clean up the pre-existing copies once
+      const token = await fetchDriveToken(folderId);
+      await Promise.all(
+        olds
+          .filter((id) => id !== keepId)
+          .map(async (id) => {
+            try {
+              await fetch(
+                `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(id)}?supportsAllDrives=true`,
+                { method: "DELETE", headers: { authorization: `Bearer ${token}` } },
+              );
+            } catch {
+              /* ignore */
+            }
+          }),
+      );
+    };
+
+    const scheduleDuplicateCleanup = (name: string, keepId: string | null) => {
+      const p = removeOlderDuplicates(name, keepId)
+        .catch(() => {})
+        .finally(() => cleanups.delete(p));
+      cleanups.add(p);
+    };
+
+    /**
+     * Final safety net: re-list the folder and, for every name we just
+     * uploaded, keep only the most recently created file and delete the rest.
+     * This catches duplicates created by a retried request whose first attempt
+     * actually reached Drive.
+     */
+    const reconcileDuplicates = async (names: Set<string>) => {
+      try {
+        const token = await fetchDriveToken(folderId);
+        const found = new Map<string, { id: string; created: string }[]>();
+        let pageToken: string | undefined;
+        do {
+          const url = new URL("https://www.googleapis.com/drive/v3/files");
+          url.searchParams.set("q", `'${folderId}' in parents and trashed=false`);
+          url.searchParams.set("fields", "nextPageToken,files(id,name,createdTime)");
+          url.searchParams.set("pageSize", "1000");
+          url.searchParams.set("supportsAllDrives", "true");
+          url.searchParams.set("includeItemsFromAllDrives", "true");
+          if (pageToken) url.searchParams.set("pageToken", pageToken);
+          const res = await fetch(url.toString(), {
+            headers: { authorization: `Bearer ${token}` },
+          });
+          if (!res.ok) return;
+          const json = (await res.json()) as {
+            files?: { id: string; name: string; createdTime?: string }[];
+            nextPageToken?: string;
+          };
+          for (const f of json.files ?? []) {
+            if (!names.has(f.name)) continue;
+            const list = found.get(f.name) ?? [];
+            list.push({ id: f.id, created: f.createdTime ?? "" });
+            found.set(f.name, list);
+          }
+          pageToken = json.nextPageToken;
+        } while (pageToken);
+
+        const doomed: string[] = [];
+        for (const list of found.values()) {
+          if (list.length < 2) continue;
+          list.sort((a, b) => (a.created < b.created ? 1 : a.created > b.created ? -1 : 0));
+          doomed.push(...list.slice(1).map((f) => f.id));
+        }
+        await Promise.all(
+          doomed.map(async (id) => {
+            try {
+              await fetch(
+                `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(id)}?supportsAllDrives=true`,
+                { method: "DELETE", headers: { authorization: `Bearer ${token}` } },
+              );
+            } catch {
+              /* ignore */
+            }
+          }),
+        );
+      } catch {
+        /* best effort */
+      }
+    };
+
+
+
 
 
     const uploadOne = async (file: Blob, name: string) => {
@@ -402,10 +600,14 @@ export function DriveUpload({ files, rangeName }: Props) {
         if (pausedRef.current) throw new Error("__paused__");
         try {
           const started = Date.now();
-          await uploadDirect(file, name, attempt > 0);
+          const newId = await uploadDirect(file, name, attempt > 0);
           if (attempt > 0) ctrl.retryFinished();
           ctrl.recordSuccess(Date.now() - started);
+          bytesLoaded.set(name, file.size);
+          reportProgress();
+          scheduleDuplicateCleanup(name, newId ?? null);
           return;
+
         } catch (e) {
           if (pausedRef.current) throw new Error("__paused__");
           if (isNetworkError(e) && typeof navigator !== "undefined" && !navigator.onLine) {
@@ -481,10 +683,7 @@ export function DriveUpload({ files, rangeName }: Props) {
             activeNames.delete(name);
             syncActive();
             setStats(ctrl.stats());
-            setProgress({
-              done: localCompleted.size + localFailed.size,
-              total: files.length,
-            });
+            reportProgress();
           }
         }
       } finally {
@@ -500,6 +699,14 @@ export function DriveUpload({ files, rangeName }: Props) {
       while (running.size > 0) {
         await Promise.all(Array.from(running));
       }
+      // Let the pending duplicate cleanups settle, then reconcile the folder so
+      // that exactly ONE (the newest) copy of every uploaded name survives.
+      await Promise.all(Array.from(cleanups));
+      if (!pausedRef.current && localCompleted.size > 0) {
+        await reconcileDuplicates(new Set(localCompleted));
+      }
+
+
 
       if (!pausedRef.current) {
         if (localFailed.size > 0) {
@@ -700,7 +907,9 @@ export function DriveUpload({ files, rangeName }: Props) {
                           <>Uploading package...</>
                         )}
                       </span>
-                      <span className="font-mono text-foreground">{Math.round((progress.done / progress.total) * 100)}%</span>
+                      <span className="font-mono text-foreground">
+                        {Math.min(100, Math.floor((progress.bytesDone / progress.bytesTotal) * 100))}%
+                      </span>
                     </div>
                     <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
                       <div
@@ -708,7 +917,7 @@ export function DriveUpload({ files, rangeName }: Props) {
                           "h-full transition-all duration-300",
                           paused ? "bg-amber-500" : "bg-primary"
                         )}
-                        style={{ width: `${(progress.done / progress.total) * 100}%` }}
+                        style={{ width: `${Math.min(100, (progress.bytesDone / progress.bytesTotal) * 100)}%` }}
                       />
                     </div>
                     {stats && (

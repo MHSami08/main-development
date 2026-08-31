@@ -158,8 +158,7 @@ export function buildUploadEmail(info: {
     ${row("User", info.userName)}
     ${row("Email", info.userEmail)}
     ${row("Folder", info.folderName)}
-    ${info.rangeName ? row("Range", info.rangeName) : ""}
-    ${info.pageRange ? row("Pages", `\u09aa\u09c3\u09b7\u09cd\u09a0\u09be (${info.pageRange.start}-${info.pageRange.end})`) : ""}
+    ${info.rangeName ? row("Batch Name", info.rangeName) : ""}
     ${row("Pictures", String(info.imageCount))}
     ${row("Date", date)}
     ${row("Time", `${time} (Asia/Dhaka)`)}
