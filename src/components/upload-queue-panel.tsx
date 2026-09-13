@@ -1,13 +1,14 @@
 // Review panel for the temporary multi-folder upload queue.
 // Phase 3: folder-wise automatic page numbering per group.
-// Phase 4: pre-scan (duplicate + leftover + collision detection) and a
-// confirmation dialog. Building or scanning the queue never writes to Drive —
-// the real multi-folder upload engine arrives in the next phase.
+// Phase 4: pre-scan (duplicate + leftover + collision detection).
+// Phase 5-7: the real multi-folder upload engine, per-folder status with
+// verification and retry, batch history and Gmail notification per group.
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
+  AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
@@ -17,9 +18,13 @@ import {
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
 import {
+  CheckCircle2,
   FolderOpen,
   Layers,
   Loader2,
+  Pause,
+  Play,
+  RotateCcw,
   ScanSearch,
   Trash2,
   UploadCloud,
@@ -28,6 +33,7 @@ import {
 import { toast } from "sonner";
 import { formatPages } from "@/lib/upload-scan";
 import { prescanQueue, type QueueScan } from "@/lib/queue-prescan";
+import { runQueueUpload, type QueueUploadState } from "@/lib/queue-upload";
 import {
   clearQueue,
   queueFileCount,
